@@ -221,7 +221,9 @@ function renderNodeContent(node, body){
   if(!group.maskImage){body.appendChild(placeholder(false)); node.width=PLACE_W; node.height=PLACE_H; return;}
   if(node.kind==='mask'){const c=makeCanvas(group.maskImage.naturalWidth,group.maskImage.naturalHeight,'canvas-view checker'); drawMask(group,c); c.style.width=node.width+'px'; c.style.height=node.height+'px'; body.appendChild(c); return;}
   if(node.kind==='result'){const c=makeCanvas(group.maskImage.naturalWidth,group.maskImage.naturalHeight,'canvas-view white'); drawResult(group,c); c.style.width=node.width+'px'; c.style.height=node.height+'px'; body.appendChild(c); return;}
-  if(node.kind==='layout'){const c=makeCanvas(node.width,node.height,'canvas-view'); body.appendChild(c); c.addEventListener('pointerdown', onLayoutPointerDown); drawLayout(group,c); return;}
+  if(node.kind==='layout'){const c=makeCanvas(node.width,node.height,'canvas-view'); body.appendChild(c); c.addEventListener('pointerdown', onLayoutPointerDown);
+  c.addEventListener('wheel', e=>{onLayoutWheel(e,node,group);},{passive:false});
+  drawLayout(group,c); return;}
 }
 function renderAll(){root.innerHTML=''; Object.values(state.nodes).forEach(n=>root.appendChild(createNode(n))); renderSelection(); applyViewport();}
 
@@ -294,7 +296,7 @@ function drawResult(group, canvas){
   // tile 与布局定位显示画布同尺寸（ms.width*2 × ms.height*2）
   const layoutNode=state.nodes['layout_'+group.key];
   const tile=getLayoutTileCanvas(layoutNode);
-  if(group.key==='S' && (state.logos.S||[]).length){const lctx=tile.getContext('2d'); drawLogosForS(lctx);}
+  if((state.logos[group.key]||[]).length){const lctx=tile.getContext('2d'); drawLogosForGroup(lctx,group.key);}
   // 布局定位显示尺寸 vs mask 原始尺寸的缩放比
   const scaleX=layoutNode.width/(group.maskImage.naturalWidth*2);
   const scaleY=layoutNode.height/(group.maskImage.naturalHeight*2);
@@ -363,49 +365,85 @@ function filterOutFrontBack(pieces){
 function initLayoutPositions(group){
   const node=state.nodes['layout_'+group.key];
   const W=node.width, H=node.height;
-  const hw=W/2, hh=H/2;
-  const {back, fronts, others}=classifyPieces(group.pieces);
-  // 左上：左前+右前，左下：后背，右上：others前半，右下：others后半
-  placePiecesInQuadrant(fronts,            0,  0,  hw, hh);
-  placePiecesInQuadrant(back?[back]:[],    0,  hh, hw, hh);
-  const half=Math.ceil(others.length/2);
-  placePiecesInQuadrant(others.slice(0,half), hw, 0,  hw, hh);
-  placePiecesInQuadrant(others.slice(half),   hw, hh, hw, hh);
-}
-function placePiecesInQuadrant(pieces, qx, qy, qw, qh){
-  if(!pieces||!pieces.length) return;
-  const pad=16;
-  const n=pieces.length;
-  const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
-  const cellW=(qw-pad*(cols+1))/cols;
-  const cellH=(qh-pad*(rows+1))/rows;
-  pieces.forEach((p,i)=>{
-    const col=i%cols, row=Math.floor(i/cols);
-    const cx=qx+pad+(col*(cellW+pad))+cellW/2;
-    const cy=qy+pad+(row*(cellH+pad))+cellH/2;
-    // layoutScale: 在布局定位中显示时的缩放比（不影响drawResult用的displayW/H）
-    p.layoutScale=Math.min(cellW/p.displayW, cellH/p.displayH, 1);
-    const lw=p.displayW*p.layoutScale, lh=p.displayH*p.layoutScale;
-    p.x=Math.round(cx-lw/2);
-    p.y=Math.round(cy-lh/2);
+  // 计算所有裁切片在排版图坐标系中的整体包围盒
+  const allPieces=group.pieces;
+  if(!allPieces.length) return;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  allPieces.forEach(p=>{
+    minX=Math.min(minX,p.originX); minY=Math.min(minY,p.originY);
+    maxX=Math.max(maxX,p.originX+p.bbox.w); maxY=Math.max(maxY,p.originY+p.bbox.h);
+  });
+  const bboxW=maxX-minX, bboxH=maxY-minY;
+  // 将排版图整体缩放适配到布局定位画布（留 pad 边距）
+  const pad=24;
+  const scale=Math.min((W-pad*2)/bboxW, (H-pad*2)/bboxH);
+  const offX=pad+(W-pad*2-bboxW*scale)/2;
+  const offY=pad+(H-pad*2-bboxH*scale)/2;
+  allPieces.forEach(p=>{
+    // 按排版图原始相对位置等比缩放到布局定位画布
+    p.layoutScale=scale;
+    p.x=Math.round(offX+(p.originX-minX)*scale);
+    p.y=Math.round(offY+(p.originY-minY)*scale);
   });
 }
 function clampPiece(group,p){const node=state.nodes['layout_'+group.key]; const s=p.layoutScale||1; const w=p.displayW*s, h=p.displayH*s, rot=p.rotation; const hw=w/2,hh=h/2; const cos=Math.cos(rot), sin=Math.sin(rot); const pts=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x,y])=>({x:x*cos-y*sin,y:x*sin+y*cos})); const minX=Math.min(...pts.map(a=>a.x)), maxX=Math.max(...pts.map(a=>a.x)), minY=Math.min(...pts.map(a=>a.y)), maxY=Math.max(...pts.map(a=>a.y)); let cx=Math.min(Math.max(p.x+w/2,-minX), node.width-maxX); let cy=Math.min(Math.max(p.y+h/2,-minY), node.height-maxY); p.x=cx-w/2; p.y=cy-h/2;}
-function clampLogo(logo){const node=state.nodes['layout_S']; logo.x=Math.max(0,Math.min(logo.x,node.width-logo.w)); logo.y=Math.max(0,Math.min(logo.y,node.height-logo.h));}
+function clampLogo(logo){/* logo 可超出边界，不限制 */}
 function pointInRotRect(px,py,x,y,w,h,rot){const cx=x+w/2, cy=y+h/2, cos=Math.cos(-rot), sin=Math.sin(-rot); const dx=px-cx, dy=py-cy; const rx=dx*cos-dy*sin+w/2, ry=dx*sin+dy*cos+h/2; return rx>=0&&ry>=0&&rx<=w&&ry<=h;}
 function layoutPosFromEvent(e, node){const rect=root.querySelector(`.node[data-id="${node.id}"] canvas`).getBoundingClientRect(); const sx=node.width/rect.width, sy=node.height/rect.height; return {x:(e.clientX-rect.left)*sx, y:(e.clientY-rect.top)*sy};}
+function onLayoutWheel(e, node, group){
+  e.preventDefault();
+  const pos=layoutPosFromEvent(e,node);
+  const logos=state.logos[group.key]||[];
+  // 找到鼠标下的 logo
+  let hit=null;
+  for(let i=logos.length-1;i>=0;i--){
+    if(pointInRotRect(pos.x,pos.y,logos[i].x,logos[i].y,logos[i].w,logos[i].h,logos[i].rotation||0)){hit=logos[i];break;}
+  }
+  if(!hit) return;
+  const factor=e.deltaY<0?1.1:0.9;
+  // 以 logo 中心缩放
+  hit.w=Math.max(20,Math.round(hit.w*factor));
+  hit.h=Math.max(20,Math.round(hit.h*factor));
+  [`layout_${group.key}`,`result_${group.key}`].forEach(id=>{
+    const cv=root.querySelector(`.node[data-id="${id}"] canvas`);
+    if(cv){id.startsWith('layout')?drawLayout(group,cv):drawResult(group,cv);}
+  });
+}
 function onLayoutPointerDown(e){
   e.stopPropagation();
-  const nodeId=e.currentTarget.parentElement.parentElement.dataset.id; const node=state.nodes[nodeId]; const group=state.groups[node.group]; selectNode(nodeId); const pos=layoutPosFromEvent(e,node);
-  let hit=null; 
-  if(group.key==='S'){
-    const logos=state.logos.S||[];
-    for(let i=logos.length-1;i>=0;i--){const l=logos[i]; if(pointInRotRect(pos.x,pos.y,l.x,l.y,l.w,l.h,l.rotation||0)){hit=l; break;}}
+  const nodeId=e.currentTarget.parentElement.parentElement.dataset.id;
+  const node=state.nodes[nodeId]; const group=state.groups[node.group];
+  selectNode(nodeId); const pos=layoutPosFromEvent(e,node);
+  let hit=null;
+
+  // 检测 logo 点击（所有尺寸）
+  const logos=state.logos[group.key]||[];
+  for(let i=logos.length-1;i>=0;i--){
+    const l=logos[i];
+    if(pointInRotRect(pos.x,pos.y,l.x,l.y,l.w,l.h,l.rotation||0)){hit=l; break;}
   }
-  if(hit){selectObject(hit.id,nodeId); state.objectDrag={kind:'logo',id:hit.id,group:'S',mode:e.shiftKey?'rotate':'move',sx:e.clientX,sy:e.clientY,ox:hit.x,oy:hit.y,or:hit.rotation||0}; return;}
+  if(hit){
+    selectObject(hit.id,nodeId);
+    // 判断模式：Shift=旋转，Ctrl=缩放，否则移动
+    const mode=e.shiftKey?'rotate':e.ctrlKey?'scale':'move';
+    state.objectDrag={kind:'logo',id:hit.id,group:group.key,mode,
+      sx:e.clientX,sy:e.clientY,ox:hit.x,oy:hit.y,or:hit.rotation||0,
+      ow:hit.w,oh:hit.h};
+    return;
+  }
+
+  // 检测裁切片点击
   const lp=(document.getElementById('filterToggle').checked && group.key!=='S')?(group.layoutPieces||group.pieces):group.pieces;
-  for(let i=lp.length-1;i>=0;i--){const p=lp[i]; const _s=p.layoutScale||1; if(pointInRotRect(pos.x,pos.y,p.x,p.y,p.displayW*_s,p.displayH*_s,p.rotation)){hit=p; break;}}
-  if(hit){selectObject(hit.id,nodeId); state.objectDrag={kind:'piece',group:group.key,id:hit.id,mode:e.shiftKey?'rotate':'move',sx:e.clientX,sy:e.clientY,ox:hit.x,oy:hit.y,or:hit.rotation};}
+  for(let i=lp.length-1;i>=0;i--){
+    const p=lp[i]; const _s=p.layoutScale||1;
+    if(pointInRotRect(pos.x,pos.y,p.x,p.y,p.displayW*_s,p.displayH*_s,p.rotation)){hit=p; break;}
+  }
+  if(hit){
+    selectObject(hit.id,nodeId);
+    state.objectDrag={kind:'piece',group:group.key,id:hit.id,
+      mode:e.shiftKey?'rotate':'move',
+      sx:e.clientX,sy:e.clientY,ox:hit.x,oy:hit.y,or:hit.rotation};
+  }
 }
 async function setFabric(src){
   state.fabricSrc=src; state.fabricImage=await loadImage(src);
@@ -467,9 +505,29 @@ window.addEventListener('pointermove',e=>{
   if(state.nodeDrag){const n=state.nodes[state.nodeDrag.id]; n.x=state.nodeDrag.ox+(e.clientX-state.nodeDrag.sx)/state.zoom; n.y=state.nodeDrag.oy+(e.clientY-state.nodeDrag.sy)/state.zoom; const el=root.querySelector(`.node[data-id="${n.id}"]`); if(el){el.style.left=n.x+'px'; el.style.top=n.y+'px';} return;}
   if(state.objectDrag){
     if(state.objectDrag.kind==='logo'){
-      const logos=state.logos.S||[]; const l=logos.find(i=>i.id===state.objectDrag.id); if(!l) return; if(state.objectDrag.mode==='move'){l.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; l.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {l.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/(180*state.zoom);} clampLogo(l); ['layout_S','result_S'].forEach(id=>{const c=root.querySelector(`.node[data-id="${id}"] canvas`); if(c){id.startsWith('layout')?drawLayout(state.groups.S,c):drawResult(state.groups.S,c);}}); return;
+      const gkey=state.objectDrag.group;
+      const logos=state.logos[gkey]||[];
+      const l=logos.find(i=>i.id===state.objectDrag.id); if(!l) return;
+      const dx=(e.clientX-state.objectDrag.sx)/state.zoom;
+      const dy=(e.clientY-state.objectDrag.sy)/state.zoom;
+      if(state.objectDrag.mode==='move'){
+        // logo 可超出边界，不 clamp
+        l.x=state.objectDrag.ox+dx; l.y=state.objectDrag.oy+dy;
+      } else if(state.objectDrag.mode==='rotate'){
+        l.rotation=state.objectDrag.or+dx/(120*state.zoom);
+      } else if(state.objectDrag.mode==='scale'){
+        const factor=1+dx/200;
+        l.w=Math.max(20,Math.round(state.objectDrag.ow*factor));
+        l.h=Math.max(20,Math.round(state.objectDrag.oh*factor));
+      }
+      [`layout_${gkey}`,`result_${gkey}`].forEach(id=>{
+        const cv=root.querySelector(`.node[data-id="${id}"] canvas`);
+        if(cv){id.startsWith('layout')?drawLayout(state.groups[gkey],cv):drawResult(state.groups[gkey],cv);}
+      }); return;
     }
-    const g=state.groups[state.objectDrag.group]; const _lp=(document.getElementById('filterToggle').checked && g.key!=='S')?(g.layoutPieces||g.pieces):g.pieces; const p=_lp.find(i=>i.id===state.objectDrag.id); if(!p) return; if(state.objectDrag.mode==='move'){p.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; p.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {p.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/(180*state.zoom);} clampPiece(g,p); const lc=root.querySelector(`.node[data-id="layout_${g.key}"] canvas`); const rc=root.querySelector(`.node[data-id="result_${g.key}"] canvas`); if(lc) drawLayout(g,lc); if(rc) drawResult(g,rc);
+    const g=state.groups[state.objectDrag.group];
+    const _lp=(document.getElementById('filterToggle').checked && g.key!=='S')?(g.layoutPieces||g.pieces):g.pieces;
+    const p=_lp.find(i=>i.id===state.objectDrag.id); if(!p) return; if(state.objectDrag.mode==='move'){p.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; p.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {p.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/(180*state.zoom);} clampPiece(g,p); const lc=root.querySelector(`.node[data-id="layout_${g.key}"] canvas`); const rc=root.querySelector(`.node[data-id="result_${g.key}"] canvas`); if(lc) drawLayout(g,lc); if(rc) drawResult(g,rc);
   }
 });
 window.addEventListener('pointerup',()=>{state.panDrag=null; state.nodeDrag=null; state.objectDrag=null; app.classList.remove('panning');});
@@ -582,23 +640,32 @@ async function setLogoImage(src){
   let lw=PLACE_W, lh=PLACE_H;
   if(ratio>1){ lh=Math.round(PLACE_W/ratio); } else { lw=Math.round(PLACE_H*ratio); }
   state.nodes.logo.width=lw; state.nodes.logo.height=lh;
-  // 将 logo 加入布局定位(S)——替换旧的 AI logo（只保留1个AI logo，id固定为'ai-logo'）
+  // 将 logo 加入所有尺寸的布局定位（id固定为'ai-logo'，重复生成替换旧的）
   const maxW=220, scale=Math.min(1, maxW/img.naturalWidth);
   const w=Math.round(img.naturalWidth*scale), h=Math.round(img.naturalHeight*scale);
-  const existing=state.logos.S.findIndex(l=>l.id==='ai-logo');
-  const logoObj={id:'ai-logo', image:img, src, x:40, y:40, w, h, rotation:0};
-  // clamp 需要 layout_S 节点已存在
-  if(state.nodes['layout_S']) clampLogo(logoObj);
-  if(existing>=0) state.logos.S[existing]=logoObj;
-  else state.logos.S.push(logoObj);
+  const logoObj=(key)=>({id:'ai-logo', image:img, src, x:40, y:40, w, h, rotation:0});
+  SIZES.forEach(s=>{
+    if(!state.logos[s.key]) state.logos[s.key]=[];
+    const existing=state.logos[s.key].findIndex(l=>l.id==='ai-logo');
+    if(existing>=0) state.logos[s.key][existing]=logoObj(s.key);
+    else state.logos[s.key].push(logoObj(s.key));
+  });
   relayoutNodes(); renderAll();
 }
 logoInput.addEventListener('change', async e=>{
   const files=[...e.target.files]; if(!files.length) return;
   for(const file of files){
-    const src=URL.createObjectURL(file); const img=await loadImage(src); const maxW=220, scale=Math.min(1,maxW/img.naturalWidth); const w=Math.round(img.naturalWidth*scale), h=Math.round(img.naturalHeight*scale);
-    const logo={id:'logo-'+Date.now()+'-'+Math.random().toString(36).slice(2,7), image:img, src, x:40+state.logos.S.length*30, y:40+state.logos.S.length*30, w, h, rotation:0};
-    clampLogo(logo); state.logos.S.push(logo);
+    const src=URL.createObjectURL(file);
+    const img=await loadImage(src);
+    const maxW=220, scale=Math.min(1,maxW/img.naturalWidth);
+    const w=Math.round(img.naturalWidth*scale), h=Math.round(img.naturalHeight*scale);
+    const id='logo-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
+    // 加入所有尺寸的布局定位
+    SIZES.forEach(s=>{
+      if(!state.logos[s.key]) state.logos[s.key]=[];
+      const offset=state.logos[s.key].length*30;
+      state.logos[s.key].push({id, image:img, src, x:40+offset, y:40+offset, w, h, rotation:0});
+    });
   }
   renderAll(); e.target.value='';
 });
