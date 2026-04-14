@@ -31,6 +31,7 @@ input[type=file]{display:none}
 <div id="toolbar">
   <button id="uploadFabricBtn">上传布料图</button>
   <button id="saveAllBtn">下载全部结果 PNG</button>
+  <label style="margin-left:18px;cursor:pointer;user-select:none;"><input type="checkbox" id="filterToggle" checked> 智能排除（左前、右前）与后背</label>
 </div>
 <div id="app"><div id="canvasRoot"></div></div>
 <div id="zoombar">
@@ -70,6 +71,8 @@ const uploadLogoBtn = document.createElement('button');
 uploadLogoBtn.id = 'uploadLogoBtn';
 uploadLogoBtn.textContent = '上传 Logo';
 document.getElementById('toolbar').insertBefore(uploadLogoBtn, document.getElementById('saveAllBtn'));
+
+document.getElementById('filterToggle').addEventListener('change', ()=>{ requestAnimationFrame(renderAll); });
 
 const state = {
   panX: 80, panY: 60, zoom: 0.22,
@@ -131,7 +134,47 @@ function drawLogosForS(ctx){
   const logos=state.logos.S||[];
   logos.forEach(l=>{if(!l.image) return; ctx.save(); ctx.translate(l.x+l.w/2,l.y+l.h/2); ctx.rotate(l.rotation||0); ctx.drawImage(l.image,-l.w/2,-l.h/2,l.w,l.h); if(state.selectedObjectId===l.id){ctx.strokeStyle='rgba(255,255,255,.9)'; ctx.lineWidth=2; ctx.strokeRect(-l.w/2,-l.h/2,l.w,l.h);} ctx.restore();});
 }
-function drawLayout(group, canvas){const node=state.nodes['layout_'+group.key]; const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(getLayoutTileCanvas(node),0,0); if(group.key==='S') drawLogosForS(ctx); group.pieces.forEach(p=>{ctx.save(); ctx.translate(p.x+p.displayW/2,p.y+p.displayH/2); ctx.rotate(p.rotation); ctx.drawImage(p.outlineCanvas,-p.displayW/2,-p.displayH/2,p.displayW,p.displayH); if(state.selectedObjectId===p.id){ctx.strokeStyle='rgba(96,165,250,.9)';ctx.lineWidth=2;ctx.strokeRect(-p.displayW/2,-p.displayH/2,p.displayW,p.displayH);} ctx.restore();});}
+function drawLayout(group, canvas){
+  const node=state.nodes['layout_'+group.key];
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  const hw=W/2, hh=H/2;
+  ctx.clearRect(0,0,W,H);
+
+  // 4象限背景（用布料图平铺，背景不动）
+  if(state.fabricImage){
+    ctx.drawImage(state.fabricImage,0,0,hw,hh);   // 左上
+    ctx.drawImage(state.fabricImage,hw,0,hw,hh);  // 右上
+    ctx.drawImage(state.fabricImage,0,hh,hw,hh);  // 左下
+    ctx.drawImage(state.fabricImage,hw,hh,hw,hh); // 右下
+  }
+  // 象限分隔线
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,0.35)';
+  ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(hw,0); ctx.lineTo(hw,H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,hh); ctx.lineTo(W,hh); ctx.stroke();
+  ctx.restore();
+
+  // 绘制裁切片（使用p.x,p.y坐标，支持拖拽）
+  // S 尺寸始终显示全部裁切片（含左前、右前、后背）
+  const useFilter=document.getElementById('filterToggle').checked && group.key!=='S';
+  const drawList=useFilter?(group.layoutPieces||group.pieces):group.pieces;
+  drawList.forEach(p=>{
+    const s=p.layoutScale||1;
+    const lw=p.displayW*s, lh=p.displayH*s;
+    ctx.save();
+    ctx.translate(p.x+lw/2, p.y+lh/2);
+    ctx.rotate(p.rotation);
+    ctx.drawImage(p.outlineCanvas,-lw/2,-lh/2,lw,lh);
+    if(state.selectedObjectId===p.id){
+      ctx.strokeStyle='rgba(96,165,250,.9)'; ctx.lineWidth=2;
+      ctx.strokeRect(-lw/2,-lh/2,lw,lh);
+    }
+    ctx.restore();
+  });
+  if(group.key==='S') drawLogosForS(ctx);
+}
 function drawResult(group, canvas){const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); if(!state.fabricImage||!group.maskImage||!group.pieces.length) return; const layoutNode=state.nodes['layout_'+group.key]; const tile=getLayoutTileCanvas(layoutNode); if(group.key==='S' && (state.logos.S||[]).length){const lctx=tile.getContext('2d'); drawLogosForS(lctx);} group.pieces.forEach(p=>{const temp=document.createElement('canvas'); temp.width=p.bbox.w; temp.height=p.bbox.h; const tctx=temp.getContext('2d'); const sx=(p.bbox.w/p.displayW)||1, sy=(p.bbox.h/p.displayH)||1; tctx.save(); tctx.translate(p.bbox.w/2,p.bbox.h/2); tctx.scale(sx,sy); tctx.rotate(-p.rotation); tctx.drawImage(tile,-p.x-p.displayW/2,-p.y-p.displayH/2); tctx.restore(); tctx.globalCompositeOperation='destination-in'; tctx.drawImage(p.maskCanvas,0,0); tctx.globalCompositeOperation='source-over'; ctx.drawImage(temp,p.originX,p.originY);});}
 
 function extractPieces(group){
@@ -144,11 +187,71 @@ function extractPieces(group){
     const pw=maxx-minx+1, ph=maxy-miny+1;
     const maskCanvas=document.createElement('canvas'); maskCanvas.width=pw; maskCanvas.height=ph; const mctx=maskCanvas.getContext('2d'); const imgData=mctx.createImageData(pw,ph);
     pts.forEach(([px,py])=>{const dx=((py-miny)*pw + (px-minx))*4; imgData.data[dx]=255; imgData.data[dx+1]=255; imgData.data[dx+2]=255; imgData.data[dx+3]=255;}); mctx.putImageData(imgData,0,0);
-    const outlineCanvas=document.createElement('canvas'); outlineCanvas.width=pw; outlineCanvas.height=ph; const octx=outlineCanvas.getContext('2d'); octx.clearRect(0,0,pw,ph); octx.lineWidth=3; octx.strokeStyle='#000';
+    const outlineCanvas=document.createElement('canvas'); outlineCanvas.width=pw; outlineCanvas.height=ph; const octx=outlineCanvas.getContext('2d'); octx.clearRect(0,0,pw,ph); octx.lineWidth=5; octx.strokeStyle='#000';
     pts.forEach(([px,py])=>{const lx=px-minx, ly=py-miny; const open=(nx,ny)=>nx<0||ny<0||nx>=w||ny>=h||alphaAt(nx,ny)<20; if(open(px-1,py)){octx.beginPath();octx.moveTo(lx+0.5,ly);octx.lineTo(lx+0.5,ly+1);octx.stroke();} if(open(px+1,py)){octx.beginPath();octx.moveTo(lx+0.5,ly);octx.lineTo(lx+0.5,ly+1);octx.stroke();} if(open(px,py-1)){octx.beginPath();octx.moveTo(lx,ly+0.5);octx.lineTo(lx+1,ly+0.5);octx.stroke();} if(open(px,py+1)){octx.beginPath();octx.moveTo(lx,ly+0.5);octx.lineTo(lx+1,ly+0.5);octx.stroke();} });
     pieces.push({id:`${group.key}-piece-${pieces.length+1}`, bbox:{x:minx,y:miny,w:pw,h:ph}, originX:minx, originY:miny, displayW:Math.max(1,Math.round(pw*PREVIEW_SCALE)), displayH:Math.max(1,Math.round(ph*PREVIEW_SCALE)), x:minx*PREVIEW_SCALE, y:miny*PREVIEW_SCALE, rotation:0, maskCanvas, outlineCanvas});
   }
   group.pieces=pieces;
+  // 过滤掉前片(左前、右前)和后片(背后)，仅用于布局定位显示
+  group.layoutPieces = filterOutFrontBack(pieces);
+}
+function classifyPieces(pieces){
+  // 返回 {back, fronts, others}
+  if(pieces.length<4) return {back:null, fronts:[], others:pieces.slice()};
+  const sorted=[...pieces].sort((a,b)=>(b.bbox.w*b.bbox.h)-(a.bbox.w*a.bbox.h));
+  const back=sorted[0];
+  const removeSet=new Set([back]);
+  // 前片对 = aspect(宽/高)在0.35-0.45之间、面积最接近的一对
+  const candidates=sorted.filter(p=>{
+    const aspect=p.bbox.w/p.bbox.h;
+    return aspect>=0.35 && aspect<=0.45 && !removeSet.has(p);
+  });
+  let fronts=[], bestDiff=Infinity;
+  for(let i=0;i<candidates.length;i++){
+    for(let j=i+1;j<candidates.length;j++){
+      const a1=candidates[i].bbox.w*candidates[i].bbox.h;
+      const a2=candidates[j].bbox.w*candidates[j].bbox.h;
+      const diff=Math.abs(a1-a2)/Math.max(a1,a2);
+      if(diff<bestDiff){bestDiff=diff; fronts=[candidates[i],candidates[j]];}
+    }
+  }
+  fronts.forEach(p=>removeSet.add(p));
+  const others=pieces.filter(p=>!removeSet.has(p));
+  return {back, fronts, others};
+}
+function filterOutFrontBack(pieces){
+  const {back, fronts, others}=classifyPieces(pieces);
+  return others;
+}
+function initLayoutPositions(group){
+  const node=state.nodes['layout_'+group.key];
+  const W=node.width, H=node.height;
+  const hw=W/2, hh=H/2;
+  const {back, fronts, others}=classifyPieces(group.pieces);
+  // 左上：左前+右前，左下：后背，右上：others前半，右下：others后半
+  placePiecesInQuadrant(fronts,            0,  0,  hw, hh);
+  placePiecesInQuadrant(back?[back]:[],    0,  hh, hw, hh);
+  const half=Math.ceil(others.length/2);
+  placePiecesInQuadrant(others.slice(0,half), hw, 0,  hw, hh);
+  placePiecesInQuadrant(others.slice(half),   hw, hh, hw, hh);
+}
+function placePiecesInQuadrant(pieces, qx, qy, qw, qh){
+  if(!pieces||!pieces.length) return;
+  const pad=16;
+  const n=pieces.length;
+  const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
+  const cellW=(qw-pad*(cols+1))/cols;
+  const cellH=(qh-pad*(rows+1))/rows;
+  pieces.forEach((p,i)=>{
+    const col=i%cols, row=Math.floor(i/cols);
+    const cx=qx+pad+(col*(cellW+pad))+cellW/2;
+    const cy=qy+pad+(row*(cellH+pad))+cellH/2;
+    // layoutScale: 在布局定位中显示时的缩放比（不影响drawResult用的displayW/H）
+    p.layoutScale=Math.min(cellW/p.displayW, cellH/p.displayH, 1);
+    const lw=p.displayW*p.layoutScale, lh=p.displayH*p.layoutScale;
+    p.x=Math.round(cx-lw/2);
+    p.y=Math.round(cy-lh/2);
+  });
 }
 function clampPiece(group,p){const node=state.nodes['layout_'+group.key]; const w=p.displayW,h=p.displayH,rot=p.rotation; const hw=w/2,hh=h/2; const cos=Math.cos(rot), sin=Math.sin(rot); const pts=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x,y])=>({x:x*cos-y*sin,y:x*sin+y*cos})); const minX=Math.min(...pts.map(a=>a.x)), maxX=Math.max(...pts.map(a=>a.x)), minY=Math.min(...pts.map(a=>a.y)), maxY=Math.max(...pts.map(a=>a.y)); let cx=Math.min(Math.max(p.x+w/2,-minX), node.width-maxX); let cy=Math.min(Math.max(p.y+h/2,-minY), node.height-maxY); p.x=cx-w/2; p.y=cy-h/2;}
 function clampLogo(logo){const node=state.nodes['layout_S']; logo.x=Math.max(0,Math.min(logo.x,node.width-logo.w)); logo.y=Math.max(0,Math.min(logo.y,node.height-logo.h));}
@@ -163,7 +266,8 @@ function onLayoutPointerDown(e){
     for(let i=logos.length-1;i>=0;i--){const l=logos[i]; if(pointInRotRect(pos.x,pos.y,l.x,l.y,l.w,l.h,l.rotation||0)){hit=l; break;}}
   }
   if(hit){selectObject(hit.id,nodeId); state.objectDrag={kind:'logo',id:hit.id,group:'S',mode:e.shiftKey?'rotate':'move',sx:e.clientX,sy:e.clientY,ox:hit.x,oy:hit.y,or:hit.rotation||0}; return;}
-  for(let i=group.pieces.length-1;i>=0;i--){const p=group.pieces[i]; if(pointInRotRect(pos.x,pos.y,p.x,p.y,p.displayW,p.displayH,p.rotation)){hit=p; break;}}
+  const lp=(document.getElementById('filterToggle').checked && group.key!=='S')?(group.layoutPieces||group.pieces):group.pieces;
+  for(let i=lp.length-1;i>=0;i--){const p=lp[i]; const _s=p.layoutScale||1; if(pointInRotRect(pos.x,pos.y,p.x,p.y,p.displayW*_s,p.displayH*_s,p.rotation)){hit=p; break;}}
   if(hit){selectObject(hit.id,nodeId); state.objectDrag={kind:'piece',group:group.key,id:hit.id,mode:e.shiftKey?'rotate':'move',sx:e.clientX,sy:e.clientY,ox:hit.x,oy:hit.y,or:hit.rotation};}
 }
 async function setFabric(src){
@@ -178,11 +282,11 @@ async function loadAllMasks(){
     const ms=nodeDisplaySize(g.maskImage, PREVIEW_SCALE);
     state.nodes['mask_'+s.key].width=ms.width; state.nodes['mask_'+s.key].height=ms.height;
     state.nodes['result_'+s.key].width=ms.width; state.nodes['result_'+s.key].height=ms.height;
-    state.nodes['layout_'+s.key].width=state.nodes.fabric.width*2; state.nodes['layout_'+s.key].height=state.nodes.fabric.height;
-    g.pieces.forEach(p=>clampPiece(g,p));
+    state.nodes['layout_'+s.key].width=state.nodes.fabric.width*2; state.nodes['layout_'+s.key].height=state.nodes.fabric.height*2;
+    initLayoutPositions(g);
   }));
 }
-function relayoutNodes(){const fabricW=state.nodes.fabric.width, fabricH=state.nodes.fabric.height; state.nodes.fabric.x=120; state.nodes.fabric.y=120; const colGap=300; const col1=state.nodes.fabric.x+fabricW+220; const col2=col1+520+colGap; const col3=col2+520+colGap; const rowGap=300; let y=120; SIZES.forEach(s=>{const r=state.nodes['result_'+s.key], m=state.nodes['mask_'+s.key], l=state.nodes['layout_'+s.key]; m.x=col1; m.y=y; r.x=col2; r.y=y; l.x=col3; l.y=y; y += Math.max(r.height,m.height,l.height)+rowGap;});}
+function relayoutNodes(){const fabricW=state.nodes.fabric.width, fabricH=state.nodes.fabric.height; state.nodes.fabric.x=120; state.nodes.fabric.y=120; const colGap=200; const rowGap=200; const col1=state.nodes.fabric.x+fabricW+220; let y=120; SIZES.forEach(s=>{const r=state.nodes['result_'+s.key], m=state.nodes['mask_'+s.key], l=state.nodes['layout_'+s.key]; m.x=col1; m.y=y; r.x=col1+m.width+colGap; r.y=y; l.x=r.x+r.width+colGap; l.y=y; y += Math.max(r.height,m.height,l.height)+rowGap;});}
 async function saveAll(){
   const zip=new JSZip();
   let hasAny=false;
@@ -208,7 +312,7 @@ window.addEventListener('pointermove',e=>{
     if(state.objectDrag.kind==='logo'){
       const logos=state.logos.S||[]; const l=logos.find(i=>i.id===state.objectDrag.id); if(!l) return; if(state.objectDrag.mode==='move'){l.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; l.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {l.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/(180*state.zoom);} clampLogo(l); ['layout_S','result_S'].forEach(id=>{const c=root.querySelector(`.node[data-id="${id}"] canvas`); if(c){id.startsWith('layout')?drawLayout(state.groups.S,c):drawResult(state.groups.S,c);}}); return;
     }
-    const g=state.groups[state.objectDrag.group]; const p=g.pieces.find(i=>i.id===state.objectDrag.id); if(!p) return; if(state.objectDrag.mode==='move'){p.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; p.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {p.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/(180*state.zoom);} clampPiece(g,p); const lc=root.querySelector(`.node[data-id="layout_${g.key}"] canvas`); const rc=root.querySelector(`.node[data-id="result_${g.key}"] canvas`); if(lc) drawLayout(g,lc); if(rc) drawResult(g,rc);
+    const g=state.groups[state.objectDrag.group]; const _lp=(document.getElementById('filterToggle').checked && g.key!=='S')?(g.layoutPieces||g.pieces):g.pieces; const p=_lp.find(i=>i.id===state.objectDrag.id); if(!p) return; if(state.objectDrag.mode==='move'){p.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; p.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {p.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/(180*state.zoom);} clampPiece(g,p); const lc=root.querySelector(`.node[data-id="layout_${g.key}"] canvas`); const rc=root.querySelector(`.node[data-id="result_${g.key}"] canvas`); if(lc) drawLayout(g,lc); if(rc) drawResult(g,rc);
   }
 });
 window.addEventListener('pointerup',()=>{state.panDrag=null; state.nodeDrag=null; state.objectDrag=null; app.classList.remove('panning');});
