@@ -437,7 +437,7 @@ app.get('/token', (req, res) => {
 
 app.get('*', (req, res) => {
   if (isVercel) {
-    return res.status(404).json({ success: false, error: 'Not found' });
+    return res.redirect('/index.html');
   }
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });

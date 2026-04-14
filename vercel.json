@@ -1,10 +1,11 @@
 {
   "version": 2,
-  "rewrites": [
-    { "source": "/", "destination": "/index.html" },
-    { "source": "/print", "destination": "/print.html" },
-    { "source": "/token", "destination": "/token.html" },
-    { "source": "/api/(.*)", "destination": "/server.js" }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/server.js" },
+    { "handle": "filesystem" },
+    { "src": "/token", "dest": "/token.html" },
+    { "src": "/print", "dest": "/print.html" },
+    { "src": "/", "dest": "/index.html" }
   ],
   "functions": {
     "server.js": {
