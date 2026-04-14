@@ -1,0 +1,14 @@
+{
+  "name": "nano-banana-neodomain-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web JavaScript UI for Neodomain image generation using gemini-3-pro-image-preview",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

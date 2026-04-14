@@ -22,6 +22,19 @@ button{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);c
 .image-view,.canvas-view{display:block;max-width:3000px;height:auto;box-shadow:0 10px 26px rgba(0,0,0,.28)}
 .canvas-view.white{background:#fff}.canvas-view.checker{background-size:24px 24px;background-image:linear-gradient(45deg,#1d2636 25%,transparent 25%),linear-gradient(-45deg,#1d2636 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1d2636 75%),linear-gradient(-45deg,transparent 75%,#1d2636 75%);background-position:0 0,0 12px,12px -12px,-12px 0px;background-color:#0f172a}
 #zoombar{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:21;display:flex;gap:8px;align-items:center;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:18px;backdrop-filter:blur(10px)}
+/* AI 生图面板（布料图 & Logo 共用） */
+#aiPanel,#aiPanelLogo{display:none;position:fixed;z-index:200;width:380px;background:rgba(15,22,36,.97);border:1px solid rgba(96,165,250,.4);border-radius:18px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.6);backdrop-filter:blur(12px);flex-direction:column;gap:12px}
+#aiPanel.show,#aiPanelLogo.show{display:flex}
+#aiPanel textarea,#aiPanelLogo textarea{width:100%;min-height:90px;resize:vertical;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:10px;color:#eef4ff;font:14px/1.5 Inter,system-ui,sans-serif;padding:10px 12px;outline:none}
+#aiPanel textarea:focus,#aiPanelLogo textarea:focus{border-color:var(--accent)}
+#aiPanel .ai-row,#aiPanelLogo .ai-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#aiPanel select,#aiPanel input[type=text],#aiPanelLogo select,#aiPanelLogo input[type=text]{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#eef4ff;font:13px Inter,system-ui,sans-serif;padding:7px 10px;outline:none;flex:1;min-width:0}
+#aiPanel .ai-label,#aiPanelLogo .ai-label{font-size:12px;color:rgba(255,255,255,.5);white-space:nowrap}
+#aiPanel .ai-close,#aiPanelLogo .ai-close{position:absolute;top:12px;right:14px;background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;padding:0;line-height:1}
+#aiPanel .ai-send,#aiPanelLogo .ai-send{margin-left:auto;background:var(--accent);border:none;border-radius:10px;color:#fff;font:600 14px Inter,system-ui,sans-serif;padding:10px 22px;cursor:pointer}
+#aiPanel .ai-send:disabled,#aiPanelLogo .ai-send:disabled{opacity:.5;cursor:not-allowed}
+.fabric-generating{display:flex;align-items:center;justify-content:center;font-size:22px;color:rgba(255,255,255,.7);gap:10px;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
 #zoombar .pct{min-width:84px;text-align:center;font-size:18px;padding:10px 16px;border-radius:12px;background:rgba(255,255,255,.08)}
 #hint{position:fixed;left:16px;bottom:16px;z-index:20;max-width:700px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:14px;color:rgba(255,255,255,.75);font-size:13px;line-height:1.5}
 input[type=file]{display:none}
@@ -29,11 +42,68 @@ input[type=file]{display:none}
 </head>
 <body>
 <div id="toolbar">
-  <button id="uploadFabricBtn">上传布料图</button>
   <button id="saveAllBtn">下载全部结果 PNG</button>
   <label style="margin-left:18px;cursor:pointer;user-select:none;"><input type="checkbox" id="filterToggle" checked> 智能排除（左前、右前）与后背</label>
 </div>
 <div id="app"><div id="canvasRoot"></div></div>
+<!-- AI 生图面板 · 布料图 -->
+<div id="aiPanel">
+  <button class="ai-close" id="aiPanelClose">✕</button>
+  <div style="font-size:15px;font-weight:700;margin-bottom:2px;">AI 生图 · 布料图</div>
+  <textarea id="aiPrompt" placeholder="输入提示词，描述你想要的布料风格..."></textarea>
+  <div class="ai-row">
+    <span class="ai-label">模型</span>
+    <input type="text" id="aiModel" value="gemini-3-pro-image-preview" style="flex:2">
+  </div>
+  <div class="ai-row">
+    <span class="ai-label">比例</span>
+    <select id="aiRatio">
+      <option value="1:1">1:1</option>
+      <option value="4:3">4:3</option>
+      <option value="3:4">3:4</option>
+      <option value="16:9">16:9</option>
+      <option value="9:16">9:16</option>
+    </select>
+    <span class="ai-label">尺寸</span>
+    <select id="aiSize">
+      <option value="2K">2K</option>
+      <option value="1K">1K</option>
+      <option value="4K">4K</option>
+    </select>
+  </div>
+  <div class="ai-row">
+    <button class="ai-send" id="aiSendBtn">发送</button>
+  </div>
+</div>
+<!-- AI 生图面板 · Logo -->
+<div id="aiPanelLogo">
+  <button class="ai-close" id="aiPanelLogoClose">✕</button>
+  <div style="font-size:15px;font-weight:700;margin-bottom:2px;">AI 生图 · Logo</div>
+  <textarea id="aiLogoPrompt" placeholder="输入提示词，描述你想要的 Logo 风格..."></textarea>
+  <div class="ai-row">
+    <span class="ai-label">模型</span>
+    <input type="text" id="aiLogoModel" value="gemini-3-pro-image-preview" style="flex:2">
+  </div>
+  <div class="ai-row">
+    <span class="ai-label">比例</span>
+    <select id="aiLogoRatio">
+      <option value="1:1">1:1</option>
+      <option value="4:3">4:3</option>
+      <option value="3:4">3:4</option>
+      <option value="16:9">16:9</option>
+      <option value="9:16">9:16</option>
+    </select>
+    <span class="ai-label">尺寸</span>
+    <select id="aiLogoSize">
+      <option value="2K">2K</option>
+      <option value="1K">1K</option>
+      <option value="4K">4K</option>
+    </select>
+  </div>
+  <div class="ai-row">
+    <button class="ai-send" id="aiLogoSendBtn">发送</button>
+  </div>
+</div>
 <div id="zoombar">
   <button id="fitBtn">适合屏幕</button>
   <button id="zoomOutBtn">－</button>
@@ -67,16 +137,13 @@ logoInput.accept = 'image/*';
 logoInput.multiple = true;
 logoInput.style.display = 'none';
 document.body.appendChild(logoInput);
-const uploadLogoBtn = document.createElement('button');
-uploadLogoBtn.id = 'uploadLogoBtn';
-uploadLogoBtn.textContent = '上传 Logo';
-document.getElementById('toolbar').insertBefore(uploadLogoBtn, document.getElementById('saveAllBtn'));
 
 document.getElementById('filterToggle').addEventListener('change', ()=>{ requestAnimationFrame(renderAll); });
 
 const state = {
   panX: 80, panY: 60, zoom: 0.22,
   fabricImage: null, fabricSrc: null,
+  logoImage: null, logoSrc: null,
   selectedNodeId: null, selectedObjectId: null,
   panDrag: null, nodeDrag: null, objectDrag: null,
   nodes: {}, groups: {},
@@ -85,6 +152,7 @@ const state = {
 
 function initState(){
   state.nodes.fabric = {id:'fabric', title:'布料图', x:120, y:120, width:PLACE_W, height:PLACE_H};
+  state.nodes.logo   = {id:'logo',   title:'Logo',   x:120, y:120+PLACE_H+80, width:PLACE_W, height:PLACE_H};
   const startX = 1500, startY = 120, colGap = 820, rowGap = 360;
   SIZES.forEach((s, idx)=>{
     const y = startY + idx * rowGap;
@@ -99,6 +167,7 @@ function nodeDisplaySize(img, scale=1){let w=img.naturalWidth*scale, h=img.natur
 function makeCanvas(w,h,cls='canvas-view'){const c=document.createElement('canvas'); c.width=w; c.height=h; c.className=cls; c.style.width=w+'px'; c.style.height=h+'px'; return c;}
 function svgIcon(){return `<svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 20H19C20.1046 20 21 19.1046 21 18V8C21 6.89543 20.1046 6 19 6H5C3.89543 6 3 6.89543 3 8V18C3 19.1046 3.89543 20 5 20Z" stroke="currentColor" stroke-width="1.4"/><path d="M7 16L10 13L12.5 15.5L16 11L19 16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.5" cy="9.5" r="1.4" fill="currentColor"/></svg>`}
 function placeholder(withUpload=false){const p=document.createElement('div'); p.className='placeholder'; const inner=document.createElement('div'); inner.className='inner'; if(withUpload){const b=document.createElement('button'); b.className='upload-btn'; b.textContent='上传'; b.onclick=(e)=>{e.stopPropagation(); fabricInput.click();}; inner.appendChild(b);} else {inner.innerHTML = svgIcon() + `<div class="text">暂无图片</div>`;} p.appendChild(inner); return p;}
+function placeholderAi(hint='点击 AI 生图'){const p=document.createElement('div'); p.className='placeholder'; const inner=document.createElement('div'); inner.className='inner'; inner.innerHTML=svgIcon()+`<div class="text" style="margin-top:10px;font-size:13px;opacity:.7;">${hint}</div>`; p.appendChild(inner); return p;}
 function selectNode(id){state.selectedNodeId=id; state.selectedObjectId=null; renderSelection();}
 function selectObject(id,nodeId){state.selectedObjectId=id; state.selectedNodeId=nodeId; renderSelection();}
 function renderSelection(){document.querySelectorAll('.node').forEach(n=>n.classList.toggle('selected', n.dataset.id===state.selectedNodeId));}
@@ -111,14 +180,26 @@ function createNode(node){
   const title=document.createElement('div'); title.className='node-title'; title.textContent=node.title; wrap.appendChild(title);
   const body=document.createElement('div'); body.className='node-body'; wrap.appendChild(body);
   wrap.addEventListener('pointerdown', e=>{ if(e.target.closest('.upload-btn')||e.target.dataset.object) return; selectNode(node.id); state.nodeDrag={id:node.id,sx:e.clientX,sy:e.clientY,ox:node.x,oy:node.y}; e.stopPropagation();});
+  if(node.id==='fabric'){
+    body.style.cursor='pointer';
+    body.addEventListener('click', e=>{ if(e.target.closest('.upload-btn')) return; showAiPanel('fabric'); });
+  }
+  if(node.id==='logo'){
+    body.style.cursor='pointer';
+    body.addEventListener('click', e=>{ if(e.target.closest('.upload-btn')) return; showAiPanel('logo'); });
+  }
   renderNodeContent(node, body); return wrap;
 }
 
 function renderNodeContent(node, body){
   body.innerHTML='';
   if(node.id==='fabric'){
-    if(!state.fabricImage){body.appendChild(placeholder(true)); node.width=PLACE_W; node.height=PLACE_H; return;}
+    if(!state.fabricImage){body.appendChild(placeholderAi('点击 AI 生图')); node.width=PLACE_W; node.height=PLACE_H; return;}
     const img=document.createElement('img'); img.className='image-view'; img.src=state.fabricSrc; img.style.width=node.width+'px'; img.style.height=node.height+'px'; body.appendChild(img); return;
+  }
+  if(node.id==='logo'){
+    if(!state.logoImage){body.appendChild(placeholderAi('点击 AI 生成 Logo')); node.width=PLACE_W; node.height=PLACE_H; return;}
+    const img=document.createElement('img'); img.className='image-view'; img.src=state.logoSrc; img.style.width=node.width+'px'; img.style.height=node.height+'px'; body.appendChild(img); return;
   }
   const group=state.groups[node.group];
   if(!group.maskImage){body.appendChild(placeholder(false)); node.width=PLACE_W; node.height=PLACE_H; return;}
@@ -253,7 +334,7 @@ function placePiecesInQuadrant(pieces, qx, qy, qw, qh){
     p.y=Math.round(cy-lh/2);
   });
 }
-function clampPiece(group,p){const node=state.nodes['layout_'+group.key]; const w=p.displayW,h=p.displayH,rot=p.rotation; const hw=w/2,hh=h/2; const cos=Math.cos(rot), sin=Math.sin(rot); const pts=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x,y])=>({x:x*cos-y*sin,y:x*sin+y*cos})); const minX=Math.min(...pts.map(a=>a.x)), maxX=Math.max(...pts.map(a=>a.x)), minY=Math.min(...pts.map(a=>a.y)), maxY=Math.max(...pts.map(a=>a.y)); let cx=Math.min(Math.max(p.x+w/2,-minX), node.width-maxX); let cy=Math.min(Math.max(p.y+h/2,-minY), node.height-maxY); p.x=cx-w/2; p.y=cy-h/2;}
+function clampPiece(group,p){const node=state.nodes['layout_'+group.key]; const s=p.layoutScale||1; const w=p.displayW*s, h=p.displayH*s, rot=p.rotation; const hw=w/2,hh=h/2; const cos=Math.cos(rot), sin=Math.sin(rot); const pts=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x,y])=>({x:x*cos-y*sin,y:x*sin+y*cos})); const minX=Math.min(...pts.map(a=>a.x)), maxX=Math.max(...pts.map(a=>a.x)), minY=Math.min(...pts.map(a=>a.y)), maxY=Math.max(...pts.map(a=>a.y)); let cx=Math.min(Math.max(p.x+w/2,-minX), node.width-maxX); let cy=Math.min(Math.max(p.y+h/2,-minY), node.height-maxY); p.x=cx-w/2; p.y=cy-h/2;}
 function clampLogo(logo){const node=state.nodes['layout_S']; logo.x=Math.max(0,Math.min(logo.x,node.width-logo.w)); logo.y=Math.max(0,Math.min(logo.y,node.height-logo.h));}
 function pointInRotRect(px,py,x,y,w,h,rot){const cx=x+w/2, cy=y+h/2, cos=Math.cos(-rot), sin=Math.sin(-rot); const dx=px-cx, dy=py-cy; const rx=dx*cos-dy*sin+w/2, ry=dx*sin+dy*cos+h/2; return rx>=0&&ry>=0&&rx<=w&&ry<=h;}
 function layoutPosFromEvent(e, node){const rect=root.querySelector(`.node[data-id="${node.id}"] canvas`).getBoundingClientRect(); const sx=node.width/rect.width, sy=node.height/rect.height; return {x:(e.clientX-rect.left)*sx, y:(e.clientY-rect.top)*sy};}
@@ -286,7 +367,21 @@ async function loadAllMasks(){
     initLayoutPositions(g);
   }));
 }
-function relayoutNodes(){const fabricW=state.nodes.fabric.width, fabricH=state.nodes.fabric.height; state.nodes.fabric.x=120; state.nodes.fabric.y=120; const colGap=200; const rowGap=200; const col1=state.nodes.fabric.x+fabricW+220; let y=120; SIZES.forEach(s=>{const r=state.nodes['result_'+s.key], m=state.nodes['mask_'+s.key], l=state.nodes['layout_'+s.key]; m.x=col1; m.y=y; r.x=col1+m.width+colGap; r.y=y; l.x=r.x+r.width+colGap; l.y=y; y += Math.max(r.height,m.height,l.height)+rowGap;});}
+function relayoutNodes(){
+  const fabricW=state.nodes.fabric.width, fabricH=state.nodes.fabric.height;
+  state.nodes.fabric.x=120; state.nodes.fabric.y=120;
+  // logo 节点放在布料图下方，与布料图等宽
+  state.nodes.logo.x=120; state.nodes.logo.y=120+fabricH+80;
+  state.nodes.logo.width=fabricW;
+  const colGap=200; const rowGap=200;
+  const col1=state.nodes.fabric.x+fabricW+220;
+  let y=120;
+  SIZES.forEach(s=>{
+    const r=state.nodes['result_'+s.key], m=state.nodes['mask_'+s.key], l=state.nodes['layout_'+s.key];
+    m.x=col1; m.y=y; r.x=col1+m.width+colGap; r.y=y; l.x=r.x+r.width+colGap; l.y=y;
+    y += Math.max(r.height,m.height,l.height)+rowGap;
+  });
+}
 async function saveAll(){
   const zip=new JSZip();
   let hasAny=false;
@@ -325,10 +420,114 @@ window.addEventListener('keydown',e=>{
     const logos=state.logos.S||[]; const idx=logos.findIndex(l=>l.id===state.selectedObjectId); if(idx>=0){logos.splice(idx,1); state.selectedObjectId=null; renderAll();}
   }
 });
-document.getElementById('uploadFabricBtn').onclick=()=>fabricInput.click();
 document.getElementById('saveAllBtn').onclick=()=>saveAll();
-uploadLogoBtn.onclick=()=>logoInput.click();
 fabricInput.addEventListener('change',async e=>{const f=e.target.files[0]; if(!f) return; try{await setFabric(URL.createObjectURL(f));}catch(err){alert(err.message||String(err)); console.error(err);}});
+
+// ===== AI 生图面板（布料图 & Logo 独立）=====
+const aiPanel=document.getElementById('aiPanel');
+const aiPanelLogo=document.getElementById('aiPanelLogo');
+document.getElementById('aiPanelClose').onclick=()=>aiPanel.classList.remove('show');
+document.getElementById('aiPanelLogoClose').onclick=()=>aiPanelLogo.classList.remove('show');
+
+// 弹出对应面板，定位在节点下方
+function showAiPanel(kind){
+  // 关闭另一个面板
+  aiPanel.classList.remove('show');
+  aiPanelLogo.classList.remove('show');
+  const nodeId = kind==='logo' ? 'logo' : 'fabric';
+  const panel  = kind==='logo' ? aiPanelLogo : aiPanel;
+  const el=root.querySelector(`.node[data-id="${nodeId}"]`);
+  if(!el) return;
+  const rect=el.getBoundingClientRect();
+  const pw=panel.offsetWidth||380;
+  let left=rect.left;
+  let top=rect.bottom+12;
+  if(left+pw>window.innerWidth-10) left=window.innerWidth-pw-10;
+  if(left<10) left=10;
+  // 防止超出屏幕底部
+  if(top+300>window.innerHeight) top=rect.top-320;
+  panel.style.left=left+'px';
+  panel.style.top=top+'px';
+  panel.classList.add('show');
+}
+
+// --- 布料图 AI 发送 ---
+document.getElementById('aiSendBtn').onclick=async()=>{
+  const prompt=document.getElementById('aiPrompt').value.trim();
+  if(!prompt){alert('请输入提示词'); return;}
+  const modelName=document.getElementById('aiModel').value.trim()||'gemini-3-pro-image-preview';
+  const aspectRatio=document.getElementById('aiRatio').value;
+  const size=document.getElementById('aiSize').value;
+  aiPanel.classList.remove('show');
+  setNodeGenerating('fabric', true);
+  try{
+    const res=await fetch('/api/generate-image',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt, modelName, aspectRatio, size, numImages:'1', outputFormat:'png'})});
+    const data=await res.json();
+    if(!data.success) throw new Error(data.error||'生图失败');
+    const saved=data.savedImages||[]; if(!saved.length) throw new Error('未返回图片');
+    setNodeGenerating('fabric', false);
+    await setFabric(saved[0].localUrl);
+  }catch(err){
+    setNodeGenerating('fabric', false);
+    alert('AI 生图（布料）失败：'+(err.message||String(err)));
+  }
+};
+
+// --- Logo AI 发送 ---
+document.getElementById('aiLogoSendBtn').onclick=async()=>{
+  const prompt=document.getElementById('aiLogoPrompt').value.trim();
+  if(!prompt){alert('请输入提示词'); return;}
+  const modelName=document.getElementById('aiLogoModel').value.trim()||'gemini-3-pro-image-preview';
+  const aspectRatio=document.getElementById('aiLogoRatio').value;
+  const size=document.getElementById('aiLogoSize').value;
+  aiPanelLogo.classList.remove('show');
+  setNodeGenerating('logo', true);
+  try{
+    const res=await fetch('/api/generate-image',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt, modelName, aspectRatio, size, numImages:'1', outputFormat:'png'})});
+    const data=await res.json();
+    if(!data.success) throw new Error(data.error||'生图失败');
+    const saved=data.savedImages||[]; if(!saved.length) throw new Error('未返回图片');
+    setNodeGenerating('logo', false);
+    await setLogoImage(saved[0].localUrl);
+  }catch(err){
+    setNodeGenerating('logo', false);
+    alert('AI 生图（Logo）失败：'+(err.message||String(err)));
+  }
+};
+
+// 通用：节点显示"生图中…"
+function setNodeGenerating(nodeId, on){
+  const node=state.nodes[nodeId];
+  const el=root.querySelector(`.node[data-id="${nodeId}"] .node-body`);
+  if(!el) return;
+  if(on){
+    el.innerHTML='<div class="placeholder"><div class="inner"><div class="fabric-generating">⏳ 生图中，请稍候…</div></div></div>';
+    node.width=PLACE_W; node.height=PLACE_H;
+    const wrap=root.querySelector(`.node[data-id="${nodeId}"]`);
+    if(wrap){wrap.style.left=node.x+'px'; wrap.style.top=node.y+'px';}
+  }
+}
+
+// 加载 Logo 图片并加入布局定位(S)
+async function setLogoImage(src){
+  const img=await loadImage(src);
+  state.logoImage=img; state.logoSrc=src;
+  // 更新 logo 节点显示尺寸
+  const ls=nodeDisplaySize(img, PREVIEW_SCALE);
+  state.nodes.logo.width=ls.width; state.nodes.logo.height=ls.height;
+  // 将 logo 加入布局定位(S)——替换旧的 AI logo（只保留1个AI logo，id固定为'ai-logo'）
+  const maxW=220, scale=Math.min(1, maxW/img.naturalWidth);
+  const w=Math.round(img.naturalWidth*scale), h=Math.round(img.naturalHeight*scale);
+  const existing=state.logos.S.findIndex(l=>l.id==='ai-logo');
+  const logoObj={id:'ai-logo', image:img, src, x:40, y:40, w, h, rotation:0};
+  // clamp 需要 layout_S 节点已存在
+  if(state.nodes['layout_S']) clampLogo(logoObj);
+  if(existing>=0) state.logos.S[existing]=logoObj;
+  else state.logos.S.push(logoObj);
+  relayoutNodes(); renderAll();
+}
 logoInput.addEventListener('change', async e=>{
   const files=[...e.target.files]; if(!files.length) return;
   for(const file of files){
