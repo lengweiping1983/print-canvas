@@ -115,7 +115,7 @@ input[type=file]{display:none}
   <button id="zoom100Btn">100%</button>
   <button id="zoom200Btn">200%</button>
 </div>
-<div id="hint">所有空节点默认 1000×1000。上传布料图后，会自动显示布料图，并自动加载 S / M / L / XL / XXL 五个默认 Mask。布局定位五组都会显示。上传 Logo 仅作用于 布局定位(S)。</div>
+<div id="hint">点击布料图/Logo节点可 AI 生图；布料图节点内"上传布料图"可直接上传本地图片。工具栏"上传 Logo"可上传本地 Logo 到所有布局定位。拖动裁切片移动，Shift+拖 旋转；拖动 Logo 移动，Shift+拖 旋转，Ctrl+拖 缩放，滚轮缩放。</div>
 <input id="fabricInput" type="file" accept="image/*" />
 <script>
 const PREVIEW_SCALE = 0.2;
@@ -514,11 +514,11 @@ window.addEventListener('pointermove',e=>{
         // logo 可超出边界，不 clamp
         l.x=state.objectDrag.ox+dx; l.y=state.objectDrag.oy+dy;
       } else if(state.objectDrag.mode==='rotate'){
-        l.rotation=state.objectDrag.or+dx/(120*state.zoom);
+        l.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/120;
       } else if(state.objectDrag.mode==='scale'){
-        const factor=1+dx/200;
-        l.w=Math.max(20,Math.round(state.objectDrag.ow*factor));
-        l.h=Math.max(20,Math.round(state.objectDrag.oh*factor));
+        const factor=1+(e.clientX-state.objectDrag.sx)/200;
+        l.w=Math.max(20,Math.round(state.objectDrag.ow*Math.max(0.05,factor)));
+        l.h=Math.max(20,Math.round(state.objectDrag.oh*Math.max(0.05,factor)));
       }
       [`layout_${gkey}`,`result_${gkey}`].forEach(id=>{
         const cv=root.querySelector(`.node[data-id="${id}"] canvas`);
@@ -527,7 +527,7 @@ window.addEventListener('pointermove',e=>{
     }
     const g=state.groups[state.objectDrag.group];
     const _lp=(document.getElementById('filterToggle').checked && g.key!=='S')?(g.layoutPieces||g.pieces):g.pieces;
-    const p=_lp.find(i=>i.id===state.objectDrag.id); if(!p) return; if(state.objectDrag.mode==='move'){p.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; p.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {p.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/(180*state.zoom);} clampPiece(g,p); const lc=root.querySelector(`.node[data-id="layout_${g.key}"] canvas`); const rc=root.querySelector(`.node[data-id="result_${g.key}"] canvas`); if(lc) drawLayout(g,lc); if(rc) drawResult(g,rc);
+    const p=_lp.find(i=>i.id===state.objectDrag.id); if(!p) return; if(state.objectDrag.mode==='move'){p.x=state.objectDrag.ox+(e.clientX-state.objectDrag.sx)/state.zoom; p.y=state.objectDrag.oy+(e.clientY-state.objectDrag.sy)/state.zoom;} else {p.rotation=state.objectDrag.or+(e.clientX-state.objectDrag.sx)/180;} clampPiece(g,p); const lc=root.querySelector(`.node[data-id="layout_${g.key}"] canvas`); const rc=root.querySelector(`.node[data-id="result_${g.key}"] canvas`); if(lc) drawLayout(g,lc); if(rc) drawResult(g,rc);
   }
 });
 window.addEventListener('pointerup',()=>{state.panDrag=null; state.nodeDrag=null; state.objectDrag=null; app.classList.remove('panning');});
@@ -535,9 +535,25 @@ app.addEventListener('pointerdown',e=>{if(e.target.closest('.node')||e.target.cl
 app.addEventListener('wheel',e=>{e.preventDefault(); setZoom(state.zoom*(e.deltaY<0?1.1:0.9),e.clientX,e.clientY);},{passive:false});
 window.addEventListener('keydown',e=>{
   if(e.key!=='Delete'&&e.key!=='Backspace') return;
-  if(state.selectedNodeId==='fabric'){state.fabricImage=null; state.fabricSrc=null; fabricInput.value=''; SIZES.forEach(s=>{const g=state.groups[s.key]; g.maskImage=null; g.pieces=[];}); state.logos.S=[]; relayoutNodes(); renderAll(); return;}
+  if(state.selectedNodeId==='fabric'){
+    state.fabricImage=null; state.fabricSrc=null; fabricInput.value='';
+    SIZES.forEach(s=>{const g=state.groups[s.key]; g.maskImage=null; g.pieces=[]; g.layoutPieces=[];});
+    SIZES.forEach(s=>{ state.logos[s.key]=[]; });
+    relayoutNodes(); renderAll(); return;
+  }
+  if(state.selectedNodeId==='logo'){
+    state.logoImage=null; state.logoSrc=null;
+    SIZES.forEach(s=>{ state.logos[s.key]=state.logos[s.key].filter(l=>l.id!=='ai-logo'); });
+    relayoutNodes(); renderAll(); return;
+  }
   if(state.selectedObjectId){
-    const logos=state.logos.S||[]; const idx=logos.findIndex(l=>l.id===state.selectedObjectId); if(idx>=0){logos.splice(idx,1); state.selectedObjectId=null; renderAll();}
+    const selId=state.selectedObjectId;
+    SIZES.forEach(s=>{
+      const arr=state.logos[s.key]||[];
+      const idx=arr.findIndex(l=>l.id===selId);
+      if(idx>=0) arr.splice(idx,1);
+    });
+    state.selectedObjectId=null; renderAll();
   }
 });
 document.getElementById('uploadLogoBtn').onclick=()=>logoInput.click();
