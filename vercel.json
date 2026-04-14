@@ -2,6 +2,7 @@
   "version": 2,
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
+    { "source": "/print", "destination": "/print.html" },
     { "source": "/token", "destination": "/token.html" },
     { "source": "/api/(.*)", "destination": "/server.js" }
   ],

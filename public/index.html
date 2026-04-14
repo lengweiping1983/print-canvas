@@ -149,7 +149,7 @@ const state = {
   selectedNodeId: null, selectedObjectId: null,
   panDrag: null, nodeDrag: null, objectDrag: null,
   nodes: {}, groups: {},
-  logos: { S: [] }
+  logos: { S:[], M:[], L:[], XL:[], XXL:[] }
 };
 
 function initState(){
@@ -227,9 +227,25 @@ function renderAll(){root.innerHTML=''; Object.values(state.nodes).forEach(n=>ro
 
 function drawMask(group, canvas){const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(group.maskImage,0,0);}
 function getLayoutTileCanvas(node){const tile=document.createElement('canvas'); tile.width=node.width; tile.height=node.height; const t=tile.getContext('2d'); t.clearRect(0,0,tile.width,tile.height); if(state.fabricImage){const fw=node.width/2, fh=node.height/2; t.drawImage(state.fabricImage,0,0,fw,fh); t.drawImage(state.fabricImage,fw,0,fw,fh); t.drawImage(state.fabricImage,0,fh,fw,fh); t.drawImage(state.fabricImage,fw,fh,fw,fh);} return tile;}
-function drawLogosForS(ctx){
-  const logos=state.logos.S||[];
-  logos.forEach(l=>{if(!l.image) return; ctx.save(); ctx.translate(l.x+l.w/2,l.y+l.h/2); ctx.rotate(l.rotation||0); ctx.drawImage(l.image,-l.w/2,-l.h/2,l.w,l.h); if(state.selectedObjectId===l.id){ctx.strokeStyle='rgba(255,255,255,.9)'; ctx.lineWidth=2; ctx.strokeRect(-l.w/2,-l.h/2,l.w,l.h);} ctx.restore();});
+function drawLogosForGroup(ctx, key){
+  const logos=state.logos[key]||[];
+  logos.forEach(l=>{
+    if(!l.image) return;
+    ctx.save();
+    ctx.translate(l.x+l.w/2, l.y+l.h/2);
+    ctx.rotate(l.rotation||0);
+    ctx.drawImage(l.image,-l.w/2,-l.h/2,l.w,l.h);
+    if(state.selectedObjectId===l.id){
+      ctx.strokeStyle='rgba(255,200,0,.9)'; ctx.lineWidth=3;
+      ctx.strokeRect(-l.w/2,-l.h/2,l.w,l.h);
+      // 缩放手柄（右下角小方块）
+      ctx.fillStyle='rgba(255,200,0,.9)';
+      ctx.fillRect(l.w/2-10,-l.h/2,10,10);       // 右上
+      ctx.fillRect(l.w/2-10,l.h/2-10,10,10);     // 右下（缩放）
+      ctx.fillRect(-l.w/2,l.h/2-10,10,10);       // 左下
+    }
+    ctx.restore();
+  });
 }
 function drawLayout(group, canvas){
   const node=state.nodes['layout_'+group.key];
@@ -270,7 +286,7 @@ function drawLayout(group, canvas){
     }
     ctx.restore();
   });
-  if(group.key==='S') drawLogosForS(ctx);
+  drawLogosForGroup(ctx, group.key);
 }
 function drawResult(group, canvas){
   const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
