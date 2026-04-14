@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nano Banana Pro Token</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="left-bar">
+        <div class="logo-dot"></div>
+        <div class="left-label">AI</div>
+      </aside>
+
+      <main class="main-stage">
+        <section class="hero-card" id="openComposer">
+          <div class="hero-toolbar">
+            <span class="pill active">Image</span>
+            <span class="pill">Nano Banana Pro</span>
+            <span class="pill">/token</span>
+          </div>
+          <div class="hero-content">
+            <div class="hero-text">
+              <h1>点击图片区域，弹出输入框并调用 Nano Banana Pro</h1>
+              <p>默认模型：gemini-3-pro-image-preview</p>
+            </div>
+            <div class="hero-preview" id="heroPreview">
+              <div class="preview-placeholder">点击开始生成</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="status-card">
+          <div>
+            <div class="status-title">连接状态</div>
+            <div class="status-subtitle" id="healthText">等待检测...</div>
+          </div>
+          <button class="secondary-btn" id="checkHealthBtn">检查服务</button>
+        </section>
+
+        <section class="gallery-card">
+          <div class="card-head">
+            <h2>当前项目输出</h2>
+            <span id="galleryCount">0 张</span>
+          </div>
+          <div class="gallery-grid" id="galleryGrid"></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="composer-sheet hidden" id="composerSheet">
+      <div class="sheet-mask" id="closeComposer"></div>
+      <div class="sheet-panel">
+        <div class="sheet-topbar">
+          <div>
+            <h3>图像生成</h3>
+            <p>保持你截图里的暗色输入弹层风格</p>
+          </div>
+          <button class="icon-btn" id="sheetCloseBtn">×</button>
+        </div>
+
+        <div class="panel-grid">
+          <section class="panel-box auth-box">
+            <div class="card-head"><h4>登录 / Access Token</h4></div>
+            <div class="form-row two-cols">
+              <input id="contactInput" placeholder="手机号或邮箱" />
+              <button id="sendCodeBtn" class="secondary-btn">发送验证码</button>
+            </div>
+            <div class="form-row two-cols">
+              <input id="codeInput" placeholder="验证码" />
+              <button id="loginBtn" class="secondary-btn">登录获取 Token</button>
+            </div>
+            <div class="form-row">
+              <textarea id="accessTokenInput" placeholder="可直接粘贴 accessToken。登录成功后会自动保存在当前浏览器；若服务端已配置环境变量，也可以留空。"></textarea>
+            </div>
+            <div class="tiny-row" style="justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <span id="tokenModeText">等待检测服务端 token...</span>
+              <button id="clearTokenBtn" class="secondary-btn" type="button">清除本地 Token</button>
+            </div>
+            <div class="tiny-row">
+              <span id="tokenHelpText">你忘记 ACCESS_TOKEN 也没关系，可以直接重新登录获取。</span>
+            </div>
+            <div class="tiny-row">
+              <span id="authStatusText">等待检测认证状态...</span>
+            </div>
+            <div class="form-row hidden" id="identityWrap">
+              <label class="field-label">多身份选择</label>
+              <select id="identitySelect"></select>
+              <button id="selectIdentityBtn" class="secondary-btn">确认身份</button>
+            </div>
+          </section>
+
+          <section class="panel-box options-box">
+            <div class="card-head"><h4>生成参数</h4></div>
+            <div class="form-row two-cols">
+              <div>
+                <label class="field-label">模型</label>
+                <input id="modelNameInput" value="gemini-3-pro-image-preview" />
+              </div>
+              <div>
+                <label class="field-label">比例</label>
+                <select id="aspectRatioInput">
+                  <option>1:1</option>
+                  <option>16:9</option>
+                  <option>9:16</option>
+                  <option>4:3</option>
+                  <option>3:4</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row three-cols">
+              <div>
+                <label class="field-label">张数</label>
+                <select id="numImagesInput"><option value="1">1</option><option value="4">4</option></select>
+              </div>
+              <div>
+                <label class="field-label">尺寸</label>
+                <select id="sizeInput"><option>2K</option><option>4K</option><option>1K</option></select>
+              </div>
+              <div>
+                <label class="field-label">格式</label>
+                <select id="outputFormatInput"><option>png</option><option>jpeg</option><option>webp</option></select>
+              </div>
+            </div>
+            <div class="form-row">
+              <label class="field-label">参考图 URL（每行一张，可空）</label>
+              <textarea id="imageUrlsInput" placeholder="https://example.com/ref1.png&#10;https://example.com/ref2.png"></textarea>
+            </div>
+          </section>
+        </div>
+
+        <section class="prompt-box">
+          <div class="prompt-input-wrap">
+            <textarea id="promptInput" placeholder="输入提示词，点击发送调用 Nano Banana Pro..."></textarea>
+            <button class="send-btn" id="generateBtn">发送</button>
+          </div>
+          <div class="tiny-row">
+            <span id="generationStatus">未开始</span>
+            <span>图像生成中时会自动保存到当前项目 generated 目录</span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
