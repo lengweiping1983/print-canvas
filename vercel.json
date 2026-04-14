@@ -1,8 +1,8 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/server.js" },
-    { "source": "/token", "destination": "/server.js" }
+    { "source": "/token", "destination": "/token.html" },
+    { "source": "/api/(.*)", "destination": "/server.js" }
   ],
   "functions": {
     "server.js": {

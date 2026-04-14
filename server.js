@@ -25,8 +25,10 @@ fs.mkdirSync(GENERATED_DIR, { recursive: true });
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
-app.use('/generated', express.static(GENERATED_DIR));
-app.use(express.static(PUBLIC_DIR));
+if (!isVercel) {
+  app.use('/generated', express.static(GENERATED_DIR));
+  app.use(express.static(PUBLIC_DIR));
+}
 
 function loadRuntimeToken() {
   try {
@@ -427,10 +429,16 @@ app.get('/api/result/:taskCode', async (req, res) => {
 });
 
 app.get('/token', (req, res) => {
+  if (isVercel) {
+    return res.redirect('/token.html');
+  }
   res.sendFile(path.join(PUBLIC_DIR, 'token.html'));
 });
 
 app.get('*', (req, res) => {
+  if (isVercel) {
+    return res.status(404).json({ success: false, error: 'Not found' });
+  }
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
