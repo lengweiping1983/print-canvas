@@ -588,6 +588,23 @@ function showAiPanel(kind){
   panel.classList.add('show');
 }
 
+async function pollImageResult(taskCode){
+  for(let i=0;i<200;i+=1){
+    await new Promise(r=>setTimeout(r,3000));
+    const res=await fetch('/api/result/'+encodeURIComponent(taskCode),{method:'GET',headers:{'Content-Type':'application/json'}});
+    const data=await res.json();
+    if(!data.success) continue;
+    const d=data.data||{};
+    if(d.status==='SUCCESS'){
+      const urls=Array.isArray(d.image_urls)?d.image_urls:[];
+      if(!urls.length) throw new Error('未返回图片');
+      return urls[0];
+    }
+    if(d.status==='FAILED') throw new Error(d.failure_reason||d.errorMessage||'图片生成失败');
+  }
+  throw new Error('轮询结果超时，请稍后重试');
+}
+
 // --- 布料图 AI 发送 ---
 document.getElementById('aiSendBtn').onclick=async()=>{
   const prompt=document.getElementById('aiPrompt').value.trim();
@@ -599,12 +616,18 @@ document.getElementById('aiSendBtn').onclick=async()=>{
   setNodeGenerating('fabric', true);
   try{
     const res=await fetch('/api/generate-image',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt, modelName, aspectRatio, size, numImages:'1', outputFormat:'png'})});
+      body:JSON.stringify({prompt, modelName, aspectRatio, size, numImages:'1', outputFormat:'png', syncMode:false})});
     const data=await res.json();
     if(!data.success) throw new Error(data.error||'生图失败');
-    const saved=data.savedImages||[]; if(!saved.length) throw new Error('未返回图片');
+    let imgUrl;
+    if(data.status==='PENDING'&&data.taskCode){
+      imgUrl=await pollImageResult(data.taskCode);
+    }else{
+      const saved=data.savedImages||[]; if(!saved.length) throw new Error('未返回图片');
+      imgUrl=saved[0].remoteUrl||saved[0].localUrl;
+    }
     setNodeGenerating('fabric', false);
-    await setFabric(saved[0].localUrl);
+    await setFabric(imgUrl);
   }catch(err){
     setNodeGenerating('fabric', false);
     alert('AI 生图（布料）失败：'+(err.message||String(err)));
@@ -622,12 +645,18 @@ document.getElementById('aiLogoSendBtn').onclick=async()=>{
   setNodeGenerating('logo', true);
   try{
     const res=await fetch('/api/generate-image',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt, modelName, aspectRatio, size, numImages:'1', outputFormat:'png'})});
+      body:JSON.stringify({prompt, modelName, aspectRatio, size, numImages:'1', outputFormat:'png', syncMode:false})});
     const data=await res.json();
     if(!data.success) throw new Error(data.error||'生图失败');
-    const saved=data.savedImages||[]; if(!saved.length) throw new Error('未返回图片');
+    let imgUrl;
+    if(data.status==='PENDING'&&data.taskCode){
+      imgUrl=await pollImageResult(data.taskCode);
+    }else{
+      const saved=data.savedImages||[]; if(!saved.length) throw new Error('未返回图片');
+      imgUrl=saved[0].remoteUrl||saved[0].localUrl;
+    }
     setNodeGenerating('logo', false);
-    await setLogoImage(saved[0].localUrl);
+    await setLogoImage(imgUrl);
   }catch(err){
     setNodeGenerating('logo', false);
     alert('AI 生图（Logo）失败：'+(err.message||String(err)));
