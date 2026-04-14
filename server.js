@@ -9,12 +9,13 @@ dns.setDefaultResultOrder('ipv4first');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const BASE_URL = 'https://story.neodomain.cn';
-const GENERATED_DIR = path.join(__dirname, 'generated');
+const isVercel = process.env.VERCEL === '1';
+const GENERATED_DIR = isVercel ? '/tmp/generated' : path.join(__dirname, 'generated');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const REQUEST_TIMEOUT_MS = 600000;
 const POLL_INTERVAL_MS = 3000;
 const DEFAULT_MODEL_NAME = process.env.DEFAULT_MODEL_NAME || 'gemini-3-pro-image-preview';
-const RUNTIME_ENV_FILE = path.join(__dirname, '.env.runtime');
+const RUNTIME_ENV_FILE = isVercel ? '/tmp/.env.runtime' : path.join(__dirname, '.env.runtime');
 
 const envToken = process.env.NEODOMAIN_ACCESS_TOKEN || process.env.ACCESS_TOKEN || '';
 let runtimeAccessToken = loadRuntimeToken() || envToken || '';
@@ -361,6 +362,16 @@ app.post('/api/generate-image', async (req, res) => {
     const taskCode = submitResult.data?.task_code;
     if (!taskCode) throw new Error('服务端未返回 task_code');
 
+    const shouldPoll = syncMode === true || (!isVercel && syncMode !== false);
+    if (!shouldPoll) {
+      return jsonResponse(res, 200, {
+        success: true,
+        taskCode,
+        status: 'PENDING',
+        message: '任务已提交，请在前端轮询结果',
+      });
+    }
+
     const resultData = await pollImageResult(accessToken, taskCode);
     const urls = Array.isArray(resultData.image_urls) ? resultData.image_urls : [];
     const ext = getExtensionFromFormat(outputFormat);
@@ -423,12 +434,16 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Nano Banana Neodomain Web 已启动:`);
-  console.log(`- Home:  http://localhost:${PORT}/`);
-  console.log(`- Token: http://localhost:${PORT}/token`);
-  console.log(`- Active token source: ${runtimeTokenSource}`);
-  if (runtimeTokenSource === 'runtime_file') {
-    console.log(`- Runtime token file: ${RUNTIME_ENV_FILE}`);
-  }
-});
+if (isVercel) {
+  module.exports = app;
+} else {
+  app.listen(PORT, () => {
+    console.log(`Nano Banana Neodomain Web 已启动:`);
+    console.log(`- Home:  http://localhost:${PORT}/`);
+    console.log(`- Token: http://localhost:${PORT}/token`);
+    console.log(`- Active token source: ${runtimeTokenSource}`);
+    if (runtimeTokenSource === 'runtime_file') {
+      console.log(`- Runtime token file: ${RUNTIME_ENV_FILE}`);
+    }
+  });
+}
